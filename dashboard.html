@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>FPCB Quality Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Manrope:wght@300;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0F1115;--panel:#171A21;--border:#2A2F3A;--text:#E8ECF1;--dim:#8A93A6;--accent:#F5C518;--good:#4ADE80;--warn:#FB923C;--bad:#EF4444;--blue:#60A5FA;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--text);padding:24px;
+  background-image:radial-gradient(at 10% 0%,rgba(245,197,24,.07) 0,transparent 50%),radial-gradient(at 90% 100%,rgba(96,165,250,.05) 0,transparent 50%);}
+#loading{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;z-index:999;}
+.spinner{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#loading p{color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:13px;text-align:center;}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--border);}
+.brand{display:flex;align-items:center;gap:14px;}
+.logo{width:44px;height:44px;background:var(--accent);color:#000;display:grid;place-items:center;font-weight:800;font-family:'JetBrains Mono',monospace;border-radius:10px;box-shadow:0 0 28px rgba(245,197,24,.45);font-size:15px;}
+.brand h1{font-size:20px;font-weight:800;letter-spacing:-.3px;}
+.brand p{font-size:12px;color:var(--dim);font-family:'JetBrains Mono',monospace;margin-top:2px;}
+.meta{text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim);line-height:1.9;}
+.meta strong{color:var(--accent);}
+.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:20px;}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;position:relative;overflow:hidden;transition:transform .2s,border-color .2s;}
+.kpi:hover{transform:translateY(-2px);border-color:var(--accent);}
+.kpi::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--accent);opacity:.6;}
+.kpi .lbl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1.3px;font-weight:700;margin-bottom:10px;}
+.kpi .val{font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:800;line-height:1;}
+.kpi .val .u{font-size:13px;color:var(--dim);margin-left:3px;}
+.kpi .sub{margin-top:8px;font-size:11px;color:var(--dim);font-family:'JetBrains Mono',monospace;}
+.c-accent .val{color:var(--accent);}.c-good .val{color:var(--good);}.c-warn .val{color:var(--warn);}.c-bad .val{color:var(--bad);}
+.filter-bar{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center;}
+.chip{background:var(--panel);border:1px solid var(--border);padding:7px 14px;border-radius:8px;font-size:12px;color:var(--dim);cursor:pointer;transition:all .15s;font-family:'JetBrains Mono',monospace;user-select:none;}
+.chip.on{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;}
+.chip:hover:not(.on){border-color:var(--accent);color:var(--text);}
+.flabel{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;}
+.chart-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px;transition:border-color .2s;}
+.panel:hover{border-color:rgba(245,197,24,.3);}
+.panel h3{font-size:13px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
+.panel h3::before{content:'';width:6px;height:6px;background:var(--accent);border-radius:50%;}
+.panel .desc{font-size:11px;color:var(--dim);margin-bottom:16px;font-family:'JetBrains Mono',monospace;}
+.ca{position:relative;height:260px;}.ca-tall{position:relative;height:320px;}
+.s4{grid-column:span 4;}.s6{grid-column:span 6;}.s8{grid-column:span 8;}
+.cpk-row{display:flex;justify-content:space-around;align-items:center;height:260px;}
+.cpk-item{text-align:center;}
+.cpk-item .name{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;}
+.cpk-item .cval{font-family:'JetBrains Mono',monospace;font-size:38px;font-weight:800;}
+.cpk-item .cst{font-size:10px;margin-top:6px;padding:3px 10px;border-radius:4px;display:inline-block;font-family:'JetBrains Mono',monospace;}
+.s-ok{background:rgba(74,222,128,.15);color:var(--good);}.s-mid{background:rgba(251,146,60,.15);color:var(--warn);}.s-ng{background:rgba(239,68,68,.15);color:var(--bad);}
+table{width:100%;border-collapse:collapse;font-size:12px;font-family:'JetBrains Mono',monospace;}
+th{text-align:left;color:var(--dim);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:1px;}
+td{padding:10px;border-bottom:1px solid rgba(42,47,58,.5);}
+tr:hover td{background:rgba(245,197,24,.03);}
+.bc{position:relative;}.bc .bar{position:absolute;left:0;top:0;bottom:0;background:rgba(245,197,24,.12);z-index:0;}.bc span{position:relative;z-index:1;}
+</style>
+</head>
+<body>
+
+<div id="loading"><div><div class="spinner"></div><p>data.json 로딩 중...</p></div></div>
+
+<div class="header">
+  <div class="brand">
+    <div class="logo">FP</div>
+    <div><h1>FPCB Quality Monitor</h1><p>연성회로기판 공정 품질 모니터링 · Powered by data.json</p></div>
+  </div>
+  <div class="meta" id="meta">로딩 중...</div>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi c-accent"><div class="lbl">Total Output</div><div class="val" id="k_output">—</div><div class="sub">누적 생산수량</div></div>
+  <div class="kpi c-good"> <div class="lbl">Yield (FPY)</div><div class="val" id="k_yield">—</div><div class="sub">First Pass Yield</div></div>
+  <div class="kpi c-bad">  <div class="lbl">Defect Rate</div><div class="val" id="k_defect">—</div><div class="sub">NG / Output</div></div>
+  <div class="kpi c-warn"> <div class="lbl">Scrap Rate</div><div class="val" id="k_scrap">—</div><div class="sub">Scrap / Input</div></div>
+  <div class="kpi">        <div class="lbl">Rework Rate</div><div class="val" id="k_rework">—</div><div class="sub">재작업 비율</div></div>
+  <div class="kpi">        <div class="lbl">Downtime</div><div class="val" id="k_dt">—</div><div class="sub">누적 설비 비가동</div></div>
+</div>
+
+<div class="filter-bar">
+  <span class="flabel">Show :</span>
+  <div class="chip on" data-t="production">생산/불량 추이</div>
+  <div class="chip on" data-t="pareto">불량 파레토</div>
+  <div class="chip on" data-t="cpk">Cpk</div>
+  <div class="chip on" data-t="spc">SPC 관리도</div>
+  <div class="chip on" data-t="line">라인별</div>
+  <div class="chip on" data-t="model">모델별</div>
+  <div class="chip on" data-t="downtime">Downtime</div>
+</div>
+
+<div class="chart-grid">
+  <div class="panel s8" data-p="production"><h3>Monthly Production &amp; Defect Trend</h3><p class="desc">// OUTPUT · NG · REWORK · SCRAP (월별) + Yield % 오버레이</p><div class="ca-tall"><canvas id="c_prod"></canvas></div></div>
+  <div class="panel s4" data-p="pareto"><h3>Defect Type Pareto</h3><p class="desc">// 불량 유형별 누적 파레토 분석</p><div class="ca-tall"><canvas id="c_pareto"></canvas></div></div>
+  <div class="panel s4" data-p="cpk"><h3>Process Capability (Cpk)</h3><p class="desc">// Ni · Au 도금 · 선폭 공정능력</p>
+    <div class="cpk-row">
+      <div class="cpk-item"><div class="name">Ni 도금</div><div class="cval" id="cpk_ni_v">—</div><div class="cst" id="cpk_ni_s"></div></div>
+      <div class="cpk-item"><div class="name">Au 도금</div><div class="cval" id="cpk_au_v">—</div><div class="cst" id="cpk_au_s"></div></div>
+      <div class="cpk-item"><div class="name">선폭 L/W</div><div class="cval" id="cpk_lw_v">—</div><div class="cst" id="cpk_lw_s"></div></div>
+    </div>
+  </div>
+  <div class="panel s8" data-p="spc"><h3>Ni Plating Thickness · Control Chart</h3><p class="desc" id="spc_desc">// SPC 관리도</p><div class="ca"><canvas id="c_spc"></canvas></div></div>
+  <div class="panel s6" data-p="line"><h3>Line Performance</h3><p class="desc">// 라인별 생산량 · 수율 비교</p><div class="ca"><canvas id="c_line"></canvas></div></div>
+  <div class="panel s6" data-p="model"><h3>Model Comparison</h3><p class="desc">// 모델별 생산량 · 수율 비교</p><div class="ca"><canvas id="c_model"></canvas></div></div>
+  <div class="panel s6" data-p="downtime"><h3>Downtime vs Output</h3><p class="desc">// 월별 다운타임(min) / 생산량(pcs) 상관</p><div class="ca"><canvas id="c_dt"></canvas></div></div>
+  <div class="panel s6" data-p="line"><h3>Line Ranking</h3><p class="desc">// 수율 기준 라인 순위</p><div style="overflow:auto;max-height:260px;"><table id="t_line"></table></div></div>
+</div>
+
+<script>
+Chart.defaults.font.family='Manrope,sans-serif';
+Chart.defaults.color='#8A93A6';
+Chart.defaults.borderColor='#2A2F3A';
+Chart.defaults.plugins.legend.labels.usePointStyle=true;
+Chart.defaults.plugins.legend.labels.padding=14;
+Chart.defaults.plugins.legend.labels.font={size:11};
+const grd={grid:{color:'rgba(42,47,58,.4)'},ticks:{font:{size:10,family:'JetBrains Mono'}}};
+
+function u(id,html){document.getElementById(id).innerHTML=html;}
+function setCpk(vid,sid,val){
+  u(vid,val);
+  const el=document.getElementById(sid);
+  if(val>=1.33){el.textContent='GOOD ✓';el.className='cst s-ok';}
+  else if(val>=1.00){el.textContent='ACCEPTABLE';el.className='cst s-mid';}
+  else{el.textContent='NG ✗';el.className='cst s-ng';}
+}
+
+fetch('data.json')
+  .then(r=>{if(!r.ok)throw new Error('data.json 로드 실패 ('+r.status+')');return r.json();})
+  .then(({meta,kpi,spec,monthly:M,pareto:P,by_line:L,by_model:Mo})=>{
+    document.getElementById('loading').style.display='none';
+
+    u('meta',`DATA PERIOD<br><strong>${meta.period_from} → ${meta.period_to}</strong><br>Records : <strong>${meta.records.toLocaleString()}</strong><br>Updated : <strong>${meta.generated}</strong>`);
+    u('k_output',kpi.total_output.toLocaleString()+'<span class="u">pcs</span>');
+    u('k_yield', kpi.yield+'<span class="u">%</span>');
+    u('k_defect',kpi.defect_rate+'<span class="u">%</span>');
+    u('k_scrap', kpi.scrap_rate+'<span class="u">%</span>');
+    u('k_rework',kpi.rework_rate+'<span class="u">%</span>');
+    u('k_dt',    kpi.downtime.toLocaleString()+'<span class="u">min</span>');
+    setCpk('cpk_ni_v','cpk_ni_s',kpi.ni_cpk);
+    setCpk('cpk_au_v','cpk_au_s',kpi.au_cpk);
+    setCpk('cpk_lw_v','cpk_lw_s',kpi.lw_cpk);
+    u('spc_desc',`// USL ${spec.ni.usl} / TARGET ${spec.ni.target} / LSL ${spec.ni.lsl}  μm`);
+
+    new Chart(document.getElementById('c_prod'),{type:'bar',data:{labels:M.months,datasets:[
+      {label:'Output',data:M.output,backgroundColor:'#F5C518',borderRadius:4,stack:'a',yAxisID:'y'},
+      {label:'NG',    data:M.ng,    backgroundColor:'#EF4444',borderRadius:4,stack:'b',yAxisID:'y'},
+      {label:'Rework',data:M.rework,backgroundColor:'#FB923C',borderRadius:4,stack:'b',yAxisID:'y'},
+      {label:'Scrap', data:M.scrap, backgroundColor:'#8A93A6',borderRadius:4,stack:'b',yAxisID:'y'},
+      {label:'Yield %',data:M.yield_m,type:'line',borderColor:'#4ADE80',backgroundColor:'transparent',yAxisID:'y1',tension:.35,pointRadius:3,borderWidth:2}
+    ]},options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:'index'},
+      scales:{x:grd,y:{...grd,position:'left',title:{display:true,text:'Pcs',color:'#8A93A6'}},
+        y1:{...grd,position:'right',grid:{display:false},min:80,max:100,title:{display:true,text:'Yield %',color:'#4ADE80'}}}}});
+
+    new Chart(document.getElementById('c_pareto'),{type:'bar',data:{labels:P.labels,datasets:[
+      {label:'NG Count',data:P.counts,backgroundColor:'#F5C518',borderRadius:4,order:2},
+      {label:'Cum %',data:P.cum,type:'line',borderColor:'#EF4444',backgroundColor:'transparent',yAxisID:'y1',tension:0,pointRadius:4,borderWidth:2,order:1}
+    ]},options:{responsive:true,maintainAspectRatio:false,
+      scales:{x:grd,y:{...grd,title:{display:true,text:'NG',color:'#8A93A6'}},
+        y1:{...grd,position:'right',grid:{display:false},min:0,max:100,title:{display:true,text:'Cum %',color:'#EF4444'}}}}});
+
+    const nLen=M.months.length;
+    new Chart(document.getElementById('c_spc'),{type:'line',data:{labels:M.months,datasets:[
+      {label:'Ni avg',data:M.ni_m,borderColor:'#F5C518',backgroundColor:'rgba(245,197,24,.12)',tension:.3,pointRadius:4,pointBackgroundColor:'#F5C518',borderWidth:2,fill:true},
+      {label:'USL '+spec.ni.usl,   data:Array(nLen).fill(spec.ni.usl),  borderColor:'#EF4444',borderDash:[6,4],pointRadius:0,borderWidth:1.5},
+      {label:'Target '+spec.ni.target,data:Array(nLen).fill(spec.ni.target),borderColor:'#4ADE80',borderDash:[3,3],pointRadius:0,borderWidth:1.5},
+      {label:'LSL '+spec.ni.lsl,   data:Array(nLen).fill(spec.ni.lsl),  borderColor:'#EF4444',borderDash:[6,4],pointRadius:0,borderWidth:1.5}
+    ]},options:{responsive:true,maintainAspectRatio:false,scales:{x:grd,y:{...grd,title:{display:true,text:'μm',color:'#8A93A6'}}}}});
+
+    new Chart(document.getElementById('c_line'),{type:'bar',data:{labels:L.labels,datasets:[
+      {label:'Output', data:L.output,backgroundColor:'#F5C518',borderRadius:6,yAxisID:'y'},
+      {label:'Yield %',data:L.yield, type:'line',borderColor:'#4ADE80',backgroundColor:'transparent',yAxisID:'y1',tension:.3,pointRadius:7,borderWidth:2}
+    ]},options:{responsive:true,maintainAspectRatio:false,
+      scales:{x:grd,y:{...grd,title:{display:true,text:'Pcs',color:'#8A93A6'}},
+        y1:{...grd,position:'right',grid:{display:false},min:85,max:100,title:{display:true,text:'Yield %',color:'#4ADE80'}}}}});
+
+    new Chart(document.getElementById('c_model'),{type:'bar',data:{labels:Mo.labels,datasets:[
+      {label:'Output', data:Mo.output,backgroundColor:'#60A5FA',borderRadius:6,yAxisID:'y'},
+      {label:'Yield %',data:Mo.yield, type:'line',borderColor:'#F5C518',backgroundColor:'transparent',yAxisID:'y1',tension:.3,pointRadius:7,borderWidth:2}
+    ]},options:{responsive:true,maintainAspectRatio:false,
+      scales:{x:grd,y:{...grd,title:{display:true,text:'Pcs',color:'#8A93A6'}},
+        y1:{...grd,position:'right',grid:{display:false},min:85,max:100,title:{display:true,text:'Yield %',color:'#F5C518'}}}}});
+
+    new Chart(document.getElementById('c_dt'),{type:'line',data:{labels:M.months,datasets:[
+      {label:'Downtime(min)',data:M.downtime_m,borderColor:'#FB923C',backgroundColor:'rgba(251,146,60,.15)',tension:.4,pointRadius:3,borderWidth:2,fill:true,yAxisID:'y'},
+      {label:'Output(pcs)', data:M.output,    borderColor:'#60A5FA',backgroundColor:'transparent',tension:.4,pointRadius:3,borderWidth:2,yAxisID:'y1'}
+    ]},options:{responsive:true,maintainAspectRatio:false,
+      scales:{x:grd,y:{...grd,title:{display:true,text:'min',color:'#FB923C'}},
+        y1:{...grd,position:'right',grid:{display:false},title:{display:true,text:'pcs',color:'#60A5FA'}}}}});
+
+    const rows=L.labels.map((l,i)=>({line:l,out:L.output[i],yld:L.yield[i],dt:L.downtime[i]}));
+    rows.sort((a,b)=>b.yld-a.yld);
+    const maxOut=Math.max(...rows.map(r=>r.out));
+    let h='<tr><th>RANK</th><th>LINE</th><th>OUTPUT</th><th>YIELD</th><th>DOWNTIME</th></tr>';
+    rows.forEach((r,i)=>{
+      const pct=(r.out/maxOut*100).toFixed(0);
+      const color=r.yld>=95?'var(--good)':r.yld>=90?'var(--warn)':'var(--bad)';
+      h+=`<tr><td style="color:var(--accent);font-weight:800">#${i+1}</td><td><strong>${r.line}</strong></td>
+        <td class="bc"><div class="bar" style="width:${pct}%"></div><span>${r.out.toLocaleString()}</span></td>
+        <td style="color:${color};font-weight:800">${r.yld.toFixed(2)}%</td><td>${r.dt.toLocaleString()} min</td></tr>`;
+    });
+    document.getElementById('t_line').innerHTML=h;
+  })
+  .catch(err=>{
+    document.getElementById('loading').innerHTML=
+      `<div style="text-align:center">
+        <div style="font-size:48px;margin-bottom:16px">⚠️</div>
+        <p style="color:#EF4444;font-family:'JetBrains Mono',monospace;font-size:14px">${err.message}</p>
+        <p style="color:#8A93A6;margin-top:12px;font-size:12px">
+          generate_json.py 를 먼저 실행해서 data.json 을 생성하세요.<br>
+          GitHub Pages 에서는 data.json 이 같은 폴더에 있어야 합니다.
+        </p>
+      </div>`;
+  });
+
+document.querySelectorAll('.chip').forEach(c=>{
+  c.addEventListener('click',()=>{
+    c.classList.toggle('on');
+    document.querySelectorAll(`.panel[data-p="${c.dataset.t}"]`).forEach(p=>{
+      p.style.display=c.classList.contains('on')?'':'none';
+    });
+  });
+});
+</script>
+</body>
+</html>
